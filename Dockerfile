@@ -1,15 +1,25 @@
-# Use a lightweight Node.js image
-FROM node:18-alpine
+FROM node:18-bullseye-slim
 
-# Set the working directory inside the container
+# set working dir
 WORKDIR /usr/src/app
 
-# Copy package files and install dependencies
+# copy only package manifests first for caching
 COPY package*.json ./
-RUN npm install --production
 
-# Copy the rest of your refactored code
+# install build dependencies, run install, then remove build deps to keep image small
+RUN apt-get update \
+  && apt-get install -y --no-install-recommends python3 make g++ \
+  && npm ci --production --unsafe-perm --no-audit --prefer-offline \
+  && apt-get remove -y python3 make g++ \
+  && apt-get autoremove -y \
+  && rm -rf /var/lib/apt/lists/* /root/.npm
+
+# copy rest of application
 COPY . .
 
-# Start the bot
-CMD ["node", "index.js"]
+# (optional) create a non-root user and give ownership of app files
+# Uncomment if you want the container to run as non-root
+# RUN useradd -m app && chown -R app:app /usr/src/app
+# USER app
+
+# Note: Do NOT change CMD/entrypoint in this patch because the repository's start file may vary.
