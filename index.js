@@ -1,10 +1,13 @@
 require('dotenv').config();
-const { Telegraf } = require('telegraf');
+const { Telegraf, session, Markup } = require('telegraf');
 const axios = require('axios');
 const aiService = require('./services/ai.service');
 const isdalogApi = require('./services/isdalog.api');
 
 const bot = new Telegraf(process.env.BOT_TOKEN);
+
+// Initialize Session Middleware to remember data between messages
+bot.use(session());
 
 // Phase 1: The First Interaction
 bot.start(async (ctx) => {
@@ -14,12 +17,13 @@ bot.start(async (ctx) => {
         // Execute the Handshake across the Docker network
         await isdalogApi.handshake(ctx.from.id, ctx.from.first_name);
         
-        await ctx.reply(`✅ Welcome aboard, ${ctx.from.first_name}! Send me a photo of your catch to log it.`);
+        await ctx.reply(`✅ Welcome aboard, ${ctx.from.first_name}! Send me a photo of your catch to begin.`);
     } catch (error) {
         await ctx.reply("⚠️ Error connecting to the maritime database. Please try again.");
     }
 });
 
+// Step 1 of Workflow: Receive Photo
 bot.on('photo', async (ctx) => {
     try {
         await ctx.reply("🐟 Scanning catch with Edge-AI...");
@@ -32,18 +36,52 @@ bot.on('photo', async (ctx) => {
 
         const aiData = await aiService.analyzeCatchImage(imageBuffer);
         
-        // Send catch mapping the telegram ID
-        await isdalogApi.logCatch(aiData, ctx.from.id);
+        // Save the AI result to the user's session memory
+        ctx.session ??= {};
+        ctx.session.pendingCatch = aiData;
         
-        await ctx.reply(`✅ Logged Successfully!\n\nSpecies: ${aiData.species}\nWeight: ${aiData.weight} kg`);
+        // Ask for location using a native Telegram UI button
+        await ctx.reply(
+            `I identified a ${aiData.species} weighing ~${aiData.weight}kg.\n\nPlease share your current GPS location to finalize the log.`,
+            Markup.keyboard([
+                Markup.button.locationRequest('📍 Send Catch Location')
+            ]).resize().oneTime()
+        );
     } catch (error) {
         console.error(error);
         await ctx.reply("⚠️ Failed to process. Please ensure the image clearly shows the fish.");
     }
 });
 
+// Step 2 of Workflow: Receive Location
+bot.on('location', async (ctx) => {
+    try {
+        // Check if they sent a photo first
+        if (!ctx.session || !ctx.session.pendingCatch) {
+            return ctx.reply("⚠️ Please send a photo of the fish first before sending your location.", Markup.removeKeyboard());
+        }
+
+        const lat = ctx.message.location.latitude;
+        const lon = ctx.message.location.longitude;
+        const aiData = ctx.session.pendingCatch;
+
+        await ctx.reply("📡 Syncing securely to IsdaLog Database...");
+
+        // Send combined data to Laravel
+        await isdalogApi.logCatch(aiData, ctx.from.id, lat, lon);
+        
+        // Clear the session memory
+        ctx.session.pendingCatch = null;
+        
+        await ctx.reply(`✅ Logged Successfully with GPS Coordinates!\n\nSpecies: ${aiData.species}\nWeight: ${aiData.weight} kg`, Markup.removeKeyboard());
+    } catch (error) {
+        console.error(error);
+        await ctx.reply("⚠️ Database sync failed. Please try again.");
+    }
+});
+
 bot.launch().then(() => {
-    console.log('[Bot] Telegram connection established. Identity Module active.');
+    console.log('[Bot] Telegram connection established. Geospatial Module active.');
 });
 
 process.once('SIGINT', () => bot.stop('SIGINT'));

@@ -25,9 +25,10 @@ class IsdaLogAPI {
       throw new Error('Failed to synchronize identity with IsdaLog.');
     }
   }
-
+  
   // Logs the Catch with Identity Attached
-  async logCatch(aiData, telegramId) {
+  // Phase 2: Added latitude and longitude parameters
+  async logCatch(aiData, telegramId, lat = null, lon = null) {
     try {
       let cleanWeight = typeof aiData.weight === 'string' 
           ? parseFloat(aiData.weight.replace(/[^0-9.]/g, ''))
@@ -37,7 +38,9 @@ class IsdaLogAPI {
         telegram_chat_id: telegramId.toString(),
         species: aiData.species || 'Unknown',
         weight: cleanWeight || 0,
-        location: 'Dipolog City Port'
+        location: 'Dipolog City Port',
+        latitude: lat,
+        longitude: lon
       };
 
       const response = await this.client.post('/catches', payload);
