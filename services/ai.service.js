@@ -1,44 +1,45 @@
-const { GoogleGenerativeAI } = require('@google/generative-ai');
+const axios = require('axios');
 
 class AIService {
   constructor() {
-    const apiKey = process.env.GEMINI_API_KEY;
-
-    if (!apiKey) {
-      console.error("CRITICAL: GEMINI_API_KEY is missing.");
-      return;
-    }
-
-    // Initialize the SDK
-    this.genAI = new GoogleGenerativeAI(apiKey);
-    
-    // Explicitly set the model
-    this.model = this.genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
+    // We use host.docker.internal to escape the Docker container 
+    // and talk directly to your Lenovo's Windows localhost
+    this.ollamaUrl = 'http://host.docker.internal:11434/api/generate';
+    this.modelName = 'llava'; // The local vision model we downloaded
   }
 
   async analyzeCatchImage(imageBuffer) {
     try {
-      if (!this.model) throw new Error("Model not initialized.");
+      console.log(`[Edge-AI] Sending image to local RTX 4060 (${this.modelName})...`);
 
-      const prompt = "Identify fish species and estimate weight in kg. Return JSON: {species: string, weight: number}";
+      const prompt = `
+        Analyze this fish catch image. 
+        Identify the exact species and estimate the weight in kilograms. 
+        Respond ONLY with a valid JSON object in this exact format:
+        {"species": "Fish Name", "weight": 0.0}
+      `;
 
-      const result = await this.model.generateContent([
-        {
-          inlineData: {
-            data: imageBuffer.toString("base64"),
-            mimeType: "image/jpeg"
-          }
-        },
-        { text: prompt }
-      ]);
+      // The payload for our local Ollama engine
+      const payload = {
+        model: this.modelName,
+        prompt: prompt,
+        images: [imageBuffer.toString('base64')],
+        stream: false,
+        format: 'json' // Ollama feature: Forces the AI to output perfect JSON!
+      };
 
-      const response = await result.response;
-      const text = response.text().replace(/```json|```/g, "").trim();
-      return JSON.parse(text);
+      const response = await axios.post(this.ollamaUrl, payload);
+      
+      // Ollama returns the generated text inside the 'response' property
+      const rawText = response.data.response;
+      
+      // Parse and return the data
+      return JSON.parse(rawText);
 
     } catch (error) {
-      console.error("AI Error:", error.message);
-      return { species: "Unknown", weight: 0.0 };
+      console.error("[Edge-AI] Local Analysis Failed:", error.message);
+      // Fallback object to prevent crashing the ecosystem
+      return { species: "Unknown (Local AI Error)", weight: 0.0 };
     }
   }
 }
