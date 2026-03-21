@@ -12,7 +12,6 @@ class IsdaLogAPI {
     });
   }
 
-  // Executes Phase 1 Handshake
   async handshake(telegramId, name) {
     try {
       const response = await this.client.post('/handshake', {
@@ -25,8 +24,7 @@ class IsdaLogAPI {
       throw new Error('Failed to synchronize identity with IsdaLog.');
     }
   }
-  
-  // Logs the Catch with Identity Attached
+
   // Phase 2: Added latitude and longitude parameters
   async logCatch(aiData, telegramId, lat = null, lon = null) {
     try {
@@ -38,7 +36,6 @@ class IsdaLogAPI {
         telegram_chat_id: telegramId.toString(),
         species: aiData.species || 'Unknown',
         weight: cleanWeight || 0,
-        location: 'Dipolog City Port',
         latitude: lat,
         longitude: lon
       };

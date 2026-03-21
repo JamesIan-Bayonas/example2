@@ -1,0 +1,19 @@
+# Node & React Frontend
+node_modules/
+build/
+dist/
+.next/
+
+# Laravel & PHP Backend
+vendor/
+public/build/
+storage/framework/
+
+# C# & .NET 
+bin/
+obj/
+.vs/
+
+# General System & Version Control
+.git/
+*.log

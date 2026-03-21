@@ -9,14 +9,10 @@ const bot = new Telegraf(process.env.BOT_TOKEN);
 // Initialize Session Middleware to remember data between messages
 bot.use(session());
 
-// Phase 1: The First Interaction
 bot.start(async (ctx) => {
     try {
         await ctx.reply("🔄 Connecting your maritime identity to IsdaLog...");
-        
-        // Execute the Handshake across the Docker network
         await isdalogApi.handshake(ctx.from.id, ctx.from.first_name);
-        
         await ctx.reply(`✅ Welcome aboard, ${ctx.from.first_name}! Send me a photo of your catch to begin.`);
     } catch (error) {
         await ctx.reply("⚠️ Error connecting to the maritime database. Please try again.");

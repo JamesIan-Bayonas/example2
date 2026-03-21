@@ -19,6 +19,7 @@ services:
       context: .
       dockerfile: Dockerfile
     container_name: isdalog-app
+    working_dir: /var/www/isdalog
     volumes:
       - ./:/var/www
     networks:
