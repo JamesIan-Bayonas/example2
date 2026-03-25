@@ -16,7 +16,7 @@ bot.start(async (ctx) => {
         await ctx.reply(`✅ Welcome aboard, ${ctx.from.first_name}! Send me a photo of your catch to begin.`);
     } catch (error) {
         // Log the actual technical error to the Docker console
-        console.error("Handshake Error Details:", error.message || error);
+        console.error(`Handshake Error Details: ${error.message || error} (Target URL: ${process.env.ISDALOG_API_URL})`);
         await ctx.reply("⚠️ Error connecting to the maritime database. Please try again.");
     }
 });
@@ -80,6 +80,7 @@ bot.on('location', async (ctx) => {
 
 bot.launch({ dropPendingUpdates: true }).then(() => {
     console.log('[Bot] Telegram connection established. Geospatial Module active.');
+    console.log(`[Bot] Configured IsdaLog API URL: ${process.env.ISDALOG_API_URL || 'NOT SET'}`);
 });
 
 process.once('SIGINT', () => bot.stop('SIGINT'));

@@ -1,52 +1,30 @@
 const axios = require('axios');
 
-class IsdaLogAPI {
-  constructor() {
-    this.client = axios.create({
-      baseURL: process.env.ISDALOG_API_URL || 'http://isdalog-app/api',
-      headers: {
-        'Authorization': `Bearer ${process.env.ISDALOG_API_TOKEN}`,
-        'Content-Type': 'application/json',
-        'Accept': 'application/json'
-      }
-    });
-  }
+// Create a single, configured axios instance for all IsdaLog API calls.
+// It will automatically use the base URL from your .env file.
+const apiClient = axios.create({
+  baseURL: process.env.ISDALOG_API_URL,
+  timeout: 8000, // Set a timeout of 8 seconds
+});
 
-  async handshake(telegramId, name) {
-    try {
-      const response = await this.client.post('/handshake', {
-        telegram_chat_id: telegramId.toString(),
-        name: name || 'Fisherman'
-      });
-      return response.data;
-    } catch (error) {
-      console.error('Handshake Failed:', error.response?.data || error.message);
-      throw new Error('Failed to synchronize identity with IsdaLog.');
-    }
-  }
+/**
+ * Performs the initial handshake with the IsdaLog API.
+ * @param {number} telegramId The user's unique Telegram ID.
+ * @param {string} name The user's first name.
+ * @returns {Promise<any>}
+ */
+const handshake = async (telegramId, name) => {
+  // The URL path here is relative to the baseURL defined above (e.g., /api/handshake)
+  const response = await apiClient.post('/api/handshake', { telegramId, name });
+  return response.data;
+};
 
-  // Phase 2: Added latitude and longitude parameters
-  async logCatch(aiData, telegramId, lat = null, lon = null) {
-    try {
-      let cleanWeight = typeof aiData.weight === 'string' 
-          ? parseFloat(aiData.weight.replace(/[^0-9.]/g, ''))
-          : aiData.weight;
+const logCatch = async (catchData, telegramId, lat, lon) => {
+  const response = await apiClient.post('/api/catches', { ...catchData, telegramId, lat, lon });
+  return response.data;
+};
 
-      const payload = {
-        telegram_chat_id: telegramId.toString(),
-        species: aiData.species || 'Unknown',
-        weight: cleanWeight || 0,
-        latitude: lat,
-        longitude: lon
-      };
-
-      const response = await this.client.post('/catches', payload);
-      return response.data;
-    } catch (error) {
-      console.error('Data Sync Failed:', error.response?.data || error.message);
-      throw new Error('Failed to synchronize catch with IsdaLog database.');
-    }
-  }
-}
-
-module.exports = new IsdaLogAPI();
+module.exports = {
+  handshake,
+  logCatch,
+};

@@ -10,6 +10,8 @@ services:
     volumes:
       - ./:/var/www
       - ./nginx/conf.d/:/etc/nginx/conf.d/
+    depends_on:
+      - app
     networks:
       - isdalog-network
 
@@ -22,6 +24,8 @@ services:
     working_dir: /var/www/isdalog
     volumes:
       - ./:/var/www
+    depends_on:
+      - db
     networks:
       - isdalog-network
 

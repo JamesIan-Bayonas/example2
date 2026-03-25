@@ -1,8 +1,2 @@
 node_modules
-dist
-build
-.git
 .env
-npm-debug.log
-.DS_Store
-# Do NOT ignore package.json or package-lock.json
