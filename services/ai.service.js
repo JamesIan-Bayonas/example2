@@ -4,7 +4,11 @@ class AIService {
   constructor() {
     // host.docker.internal allows the Docker container to escape its isolated network 
     // and talk directly to your Windows machine's localhost (where Ollama lives)
-    this.ollamaUrl = 'http://host.docker.internal:11434/api/generate';
+    // host.docker.internal allows the Docker container to escape its isolated network 
+    // this.ollamaUrl = 'http://host.docker.internal:11434/api/generate';
+    // this.ollamaUrl = process.env.OLLAMA_URL || 'http://127.0.0.1:11434';
+    // this.ollamaUrl = process.env.OLLAMA_URL || 'http://127.0.0.1:11434/api/generate';
+    this.ollamaUrl = process.env.OLLAMA_URL || 'http://host.docker.internal:11434/api/generate';
     this.modelName = 'llava'; 
   }
 
@@ -12,11 +16,12 @@ class AIService {
     try {
       console.log(`[Edge-AI] Sending image to local RTX 4060 (${this.modelName})...`);
 
+      // UPGRADED PROMPT: Forcing the Vision model to grade its own accuracy
       const prompt = `
-        Analyze this maritime fish catch image. 
-        Identify the exact species and estimate the average adult weight in kilograms. 
-        Respond ONLY with a valid JSON object in this exact format:
-        {"species": "Fish Name", "weight": 0.0}
+        Analyze this image of a fish catch. 
+        Identify the species and estimate the weight in kilograms. 
+        You MUST respond ONLY with a raw, valid JSON object in this exact format. Do not add any markdown, explanations, or conversational text:
+        {"species": "Name of Fish", "weight": 1.5, "confidence": 85}
       `;
 
       // The payload structure specifically required by Ollama
@@ -39,8 +44,8 @@ class AIService {
 
     } catch (error) {
       console.error("[Edge-AI] Local Analysis Failed:", error.message);
-      // Failsafe to prevent the bot from entering a crash loop
-      return { species: "Unknown (Local AI Error)", weight: 0.0 };
+      // Failsafe updated to include the confidence metric so the bot doesn't panic
+      return { species: "Unknown (Local AI Error)", weight: 0.0, confidence: 0 };
     }
   }
 }
