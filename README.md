@@ -3,7 +3,7 @@
 ## Overview
 Fisheries AI is a Node.js-based microservice that acts as the user-facing data collection layer for the IsdaLog ecosystem. Designed for maritime environments with limited connectivity, it utilizes a Telegram bot interface to allow fishermen to log their catch data efficiently. The service integrates with a local Edge-AI vision model (LLaVA) to automatically identify fish species, estimate weight, and calculate confidence scores directly from user-uploaded images.
 
-**Important Ecosystem Note:** This service is the frontend gateway and relies entirely on a handshake with the [IsdaLog Backend Engine](link-to-your-isdalog-repo) to function. It will not operate without the Laravel API running.
+**Important Ecosystem Note:** This service is the frontend gateway and relies entirely on a handshake with the [IsdaLog Backend Engine](https://github.com/JamesIan-Bayonas/isdalog.git) to function. It will not operate without the Laravel API running.
 
 ## System Architecture
 1. **User Interface:** Telegraf.js Telegram Bot (Supports English and Cebuano localization).
