@@ -1,66 +1,114 @@
 require('dotenv').config();
 const TelegramBot = require('node-telegram-bot-api');
-const express = require('express');
+const aiService = require('./services/ai.service');
+const isdalogApi = require('./services/isdalog.api');
 
-// --- 1. INITIALIZE BOT & SERVER ---
 const token = process.env.TELEGRAM_BOT_TOKEN;
 const bot = new TelegramBot(token, { polling: true });
 
-const app = express();
-app.use(express.json()); // Allows us to read Laravel's JSON data
+// Temporary memory store for the conversational loop
+const userSessions = {};
 
-console.log('🐟 Fisheries-AI Bot is awake and listening...');
+console.log("🎣 IsdaLog Telegram AI Bot is running...");
 
-// --- 2. EXISTING BOT LOGIC (The Input) ---
-bot.onText(/\/start/, (msg) => {
-    bot.sendMessage(msg.chat.id, "Welcome to Isdalog! 🌊\n\nTo log a catch, simply send me a clear photo of the fish.");
-});
-
+// Step 1: Listen for Photos
 bot.on('photo', async (msg) => {
-    // (Your existing photo AI scanning logic goes here...)
-    bot.sendMessage(msg.chat.id, "📸 Photo received! AI is scanning...");
+    const chatId = msg.chat.id;
+    
+    bot.sendMessage(chatId, "🔍 Scanning catch using Gemini AI...");
+
+    try {
+        const photo = msg.photo[msg.photo.length - 1]; // Get highest resolution
+        
+        // Download image buffer from Telegram
+        const fileLink = await bot.getFileLink(photo.file_id);
+        const response = await fetch(fileLink);
+        const arrayBuffer = await response.arrayBuffer();
+        const imageBuffer = Buffer.from(arrayBuffer);
+
+        // Pass to Gemini
+        const fishName = await aiService.identifyFish(imageBuffer, 'image/jpeg');
+
+        // Initialize session
+        userSessions[chatId] = {
+            user_id: 1, // Hardcoded to Fisherman ID 1 for prototype
+            fish_name: fishName,
+            location: 'Galas Port',
+        };
+
+        bot.sendMessage(chatId, `🎯 Identified: **${fishName}**!\n\nPlease type the total weight in kilograms (e.g., 15):`, { parse_mode: 'Markdown' });
+
+    } catch (error) {
+        console.error(error);
+        bot.sendMessage(chatId, "❌ Sorry, the AI vision service failed. Please try again.");
+    }
 });
 
-// --- 3. THE REVERSE HANDSHAKE (The Output) ---
-// This is where Laravel sends the success data when an auction ends
-app.post('/api/notify-fisherman', (req, res) => {
-    const { listing_id, fish_name, final_price, logistics_type } = req.body;
+// Step 2: Listen for the Weight Input 
+bot.on('message', async (msg) => {
+    const chatId = msg.chat.id;
+    const text = msg.text;
 
-    console.log(`🛎️ Webhook Triggered: Listing #${listing_id} just sold!`);
+    if (!text || msg.photo || text.startsWith('/')) return;
 
-    const fishermanChatId = process.env.ADMIN_CHAT_ID;
-    
-    if (!fishermanChatId) {
-        console.error("❌ Error: Missing ADMIN_CHAT_ID in .env!");
-        return res.status(500).send("Server Configuration Error");
+    const session = userSessions[chatId];
+    if (session && !session.weight_kg) {
+        const weight = parseFloat(text);
+
+        if (isNaN(weight)) {
+            return bot.sendMessage(chatId, "⚠️ Please enter a valid number (e.g., 15).");
+        }
+
+        // Apply dynamic baseline pricing for the UI
+        let basePrice = 1000;
+        if (session.fish_name.includes('Lapu-Lapu')) basePrice = 1500;
+        if (session.fish_name.includes('Tuna')) basePrice = 2500;
+        if (session.fish_name.includes('Bangus')) basePrice = 800;
+
+        session.weight_kg = weight;
+        session.starting_price = basePrice;
+
+        // Step 3: The Zero-Typing Confirmation Button
+        const options = {
+            reply_markup: {
+                inline_keyboard: [
+                    [{ text: "✅ Publish to Marketplace", callback_data: "publish" }],
+                    [{ text: "❌ Cancel", callback_data: "cancel" }]
+                ]
+            },
+            parse_mode: 'Markdown'
+        };
+
+        const summary = `📋 **Catch Summary**\n\n🐟 Species: ${session.fish_name}\n⚖️ Weight: ${session.weight_kg} kg\n📍 Location: ${session.location}\n💰 Est. Starting Bid: ₱${session.starting_price}\n\nIs this correct?`;
+        bot.sendMessage(chatId, summary, options);
+    }
+});
+
+// Step 4: Handle the Button Click
+bot.on('callback_query', async (callbackQuery) => {
+    const action = callbackQuery.data;
+    const msg = callbackQuery.message;
+    const chatId = msg.chat.id;
+    const session = userSessions[chatId];
+
+    if (!session) {
+        return bot.answerCallbackQuery(callbackQuery.id, { text: "Session expired." });
     }
 
-    // Format the logistics message based on the buyer's choice
-    const logisticsMsg = logistics_type === 'request_rider' 
-        ? "🛵 A delivery rider is en route to your port location." 
-        : "🚙 The buyer will self pick-up the order at your port.";
+    if (action === 'publish') {
+        bot.editMessageText("🚀 Publishing to IsdaLog Trading Floor...", { chat_id: chatId, message_id: msg.message_id });
 
-    // Build the final Telegram message
-    const message = `🎉 *CATCH SOLD!* 🎉\n\n` +
-                    `*Fish:* ${fish_name}\n` +
-                    `*Final Price:* ₱${parseFloat(final_price).toLocaleString()}\n\n` +
-                    `*Logistics:* ${logisticsMsg}\n\n` +
-                    `Please prepare the catch for handover. Great job today! 🌊`;
+        try {
+            await isdalogApi.publishCatch(session);
+            bot.editMessageText("✅ **Successfully Published!**\nMerchants are now viewing your catch.", { chat_id: chatId, message_id: msg.message_id, parse_mode: 'Markdown' });
+            delete userSessions[chatId];
+        } catch (error) {
+            bot.editMessageText("❌ Failed to connect to Laravel Server. Make sure it is running.", { chat_id: chatId, message_id: msg.message_id });
+        }
+    } else if (action === 'cancel') {
+        bot.editMessageText("❌ Cancelled.", { chat_id: chatId, message_id: msg.message_id });
+        delete userSessions[chatId];
+    }
 
-    // Shoot the message to the fisherman's phone!
-    bot.sendMessage(fishermanChatId, message, { parse_mode: 'Markdown' })
-        .then(() => {
-            console.log("✅ Success message delivered to Telegram!");
-            res.status(200).send("Notification sent");
-        })
-        .catch((err) => {
-            console.error("❌ Failed to send Telegram message:", err.message);
-            res.status(500).send("Telegram API Error");
-        });
-});
-
-// --- 4. START THE SERVER ---
-const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => {
-    console.log(`🚀 Isdalog Webhook Server running on http://localhost:${PORT}`);
+    bot.answerCallbackQuery(callbackQuery.id);
 });
