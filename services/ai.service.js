@@ -1,31 +1,25 @@
-const { GoogleGenerativeAI } = require('@google/generative-ai');
+const axios = require('axios');
 
 class AIService {
     constructor() {
-        this.genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
+        this.ollamaUrl = process.env.OLLAMA_BASE_URL || 'http://localhost:11434';
     }
 
-    async identifyFish(imageBuffer, mimeType = 'image/jpeg') {
+    async identifyFish(imageBuffer) {
         try {
-            const model = this.genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
+            const base64Image = imageBuffer.toString('base64');
 
-            const prompt = "You are a marine biology expert in the Philippines. Identify the exact species of the fish in this image. Respond with ONLY the common local or English name (e.g., Lapu-Lapu, Yellowfin Tuna, Bangus, Tambakol, Maya-Maya). Do not add any other text, punctuation, or explanation.";
+            const response = await axios.post(`${this.ollamaUrl}/api/generate`, {
+                model: "llava", // Using the local vision model on your RTX 4060
+                prompt: "Identify the exact species of the fish in this image. Respond with ONLY the common name (e.g., Lapu-Lapu, Bangus, Yellowfin Tuna). No extra text.",
+                images: [base64Image],
+                stream: false // Set to false to get a single clean string back
+            });
 
-            const imageParts = [
-                {
-                    inlineData: {
-                        data: imageBuffer.toString("base64"),
-                        mimeType
-                    }
-                }
-            ];
-
-            const result = await model.generateContent([prompt, ...imageParts]);
-            const response = await result.response;
-            return response.text().trim();
+            return response.data.response.trim();
 
         } catch (error) {
-            console.error("AI Vision Error:", error);
+            console.error("Local AI Inference Error:", error.message);
             return "Unknown Fish";
         }
     }
